@@ -1,234 +1,209 @@
-* {
-  box-sizing: border-box;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Earnings Intelligence design system.
+ *
+ * Dense, hairline-ruled, off-white. The visual model is a research note, not
+ * a consumer dashboard: information density over whitespace, and colour used
+ * only to encode direction.
+ */
+
+@layer base {
+  :root {
+    --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans text-base antialiased;
+    font-feature-settings: 'cv05' 1, 'ss01' 1;
+  }
+
+  /* Numerals must align in columns for scanning. */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    @apply bg-accent-soft text-ink;
+  }
+
+  *:focus-visible {
+    @apply outline-none ring-2 ring-accent/40 ring-offset-1 ring-offset-canvas;
+  }
 }
 
-:root {
-  --bg: #0f0f12;
-  --surface: #18181c;
-  --border: #2a2a30;
-  --text: #e4e4e7;
-  --muted: #71717a;
-  --accent: #a78bfa;
-  --positive: #22c55e;
-  --negative: #ef4444;
-  --neutral: #eab308;
+@layer components {
+  /* ---------------------------------------------------------------------
+   * Structure
+   * ------------------------------------------------------------------- */
+
+  .panel {
+    @apply border border-line bg-surface shadow-panel;
+  }
+
+  .panel-header {
+    @apply flex items-baseline justify-between gap-3 border-b border-line px-4 py-2.5;
+  }
+
+  .panel-title {
+    @apply text-xs font-semibold uppercase tracking-[0.08em] text-ink-secondary;
+  }
+
+  .panel-note {
+    @apply text-2xs text-ink-muted;
+  }
+
+  .panel-body {
+    @apply px-4 py-3;
+  }
+
+  .section-rule {
+    @apply border-t border-line;
+  }
+
+  /* ---------------------------------------------------------------------
+   * Data tables
+   * ------------------------------------------------------------------- */
+
+  .data-table {
+    @apply w-full border-collapse text-sm;
+  }
+
+  .data-table thead th {
+    @apply border-b border-line-strong px-3 py-2 text-left text-2xs font-semibold
+           uppercase tracking-[0.06em] text-ink-muted whitespace-nowrap;
+  }
+
+  .data-table tbody td {
+    @apply border-b border-line px-3 py-2 align-middle;
+  }
+
+  .data-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .data-table tbody tr:hover {
+    @apply bg-raised/60;
+  }
+
+  .num {
+    @apply text-right tabular-nums;
+  }
+
+  /* ---------------------------------------------------------------------
+   * Labels and chips
+   * ------------------------------------------------------------------- */
+
+  .chip {
+    @apply inline-flex items-center gap-1 border px-1.5 py-0.5 text-2xs font-medium
+           uppercase tracking-[0.04em] rounded-sm whitespace-nowrap;
+  }
+
+  .chip-neutral {
+    @apply border-line-strong bg-raised text-ink-secondary;
+  }
+
+  .chip-positive {
+    @apply border-positive/30 bg-positive-soft text-positive;
+  }
+
+  .chip-negative {
+    @apply border-negative/30 bg-negative-soft text-negative;
+  }
+
+  .chip-caution {
+    @apply border-caution/30 bg-caution-soft text-caution;
+  }
+
+  .chip-accent {
+    @apply border-accent/25 bg-accent-soft text-accent;
+  }
+
+  .field-label {
+    @apply text-2xs uppercase tracking-[0.07em] text-ink-muted;
+  }
+
+  /* ---------------------------------------------------------------------
+   * Controls
+   * ------------------------------------------------------------------- */
+
+  .input {
+    @apply w-full border border-line-strong bg-surface px-3 py-2 text-base text-ink
+           placeholder:text-ink-muted focus:border-accent focus:outline-none;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 border px-3 py-1.5 text-sm
+           font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply border-accent bg-accent text-white hover:bg-accent/90;
+  }
+
+  .btn-secondary {
+    @apply border-line-strong bg-surface text-ink-secondary hover:bg-raised hover:text-ink;
+  }
+
+  .tab {
+    @apply -mb-px border-b-2 border-transparent px-3 py-2 text-sm font-medium
+           text-ink-muted transition-colors hover:text-ink whitespace-nowrap;
+  }
+
+  .tab-active {
+    @apply border-ink text-ink;
+  }
+
+  /* ---------------------------------------------------------------------
+   * Typography
+   * ------------------------------------------------------------------- */
+
+  .quote-text {
+    @apply border-l-2 border-line-strong pl-3 text-base italic text-ink;
+  }
+
+  .prose-note p {
+    @apply mb-3 text-base leading-relaxed text-ink-secondary;
+  }
+
+  .prose-note h2 {
+    @apply mb-2 mt-6 text-sm font-semibold uppercase tracking-[0.06em] text-ink;
+  }
+
+  .prose-note h3 {
+    @apply mb-1.5 mt-4 text-base font-semibold text-ink;
+  }
+
+  .prose-note ul {
+    @apply mb-3 list-disc space-y-1 pl-5 text-base text-ink-secondary;
+  }
+
+  /* Highlight target when a key quote scrolls into the transcript. */
+  .quote-target {
+    @apply bg-caution-soft transition-colors duration-700;
+  }
 }
 
-body {
-  margin: 0;
-  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  line-height: 1.5;
-}
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.line-strong') transparent;
+  }
 
-a {
-  color: var(--accent);
-}
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
 
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 1.5rem;
-}
-
-h1 {
-  font-size: 1.75rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin-bottom: 0.5rem;
-}
-
-.subtitle {
-  color: var(--muted);
-  font-size: 0.95rem;
-  margin-bottom: 2rem;
-}
-
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1.25rem 1.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.card h2 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
-  color: var(--text);
-}
-
-.table-wrap {
-  overflow-x: auto;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
-
-th {
-  text-align: left;
-  padding: 0.6rem 0.75rem;
-  color: var(--muted);
-  font-weight: 500;
-  border-bottom: 1px solid var(--border);
-}
-
-td {
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid var(--border);
-}
-
-tr:last-child td {
-  border-bottom: none;
-}
-
-.sentiment-positive { color: var(--positive); }
-.sentiment-negative { color: var(--negative); }
-.sentiment-neutral { color: var(--neutral); }
-.return-positive { color: var(--positive); }
-.return-negative { color: var(--negative); }
-
-.chart-container {
-  height: 320px;
-  margin-top: 0.5rem;
-}
-
-.no-data {
-  color: var(--muted);
-  padding: 2rem;
-  text-align: center;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-.summary-item {
-  background: var(--bg);
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--border);
-}
-
-.summary-item strong {
-  display: block;
-  font-size: 0.8rem;
-  color: var(--muted);
-  margin-bottom: 0.25rem;
-}
-
-.summary-item span {
-  font-size: 1.1rem;
-  font-weight: 600;
-}
-
-.card-desc {
-  color: var(--muted);
-  font-size: 0.9rem;
-  margin: -0.5rem 0 1rem 0;
-}
-
-.language-block {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
-  margin-bottom: 1rem;
-  background: var(--bg);
-}
-
-.language-block:last-child {
-  margin-bottom: 0;
-}
-
-.language-block h3 {
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 0 0 0.75rem 0;
-  color: var(--accent);
-}
-
-.language-block p,
-.language-block ul {
-  margin: 0.5rem 0;
-  font-size: 0.9rem;
-}
-
-.language-block ul {
-  padding-left: 1.25rem;
-}
-
-.meta-row {
-  display: flex;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-  font-size: 0.85rem;
-  color: var(--muted);
-  margin-bottom: 0.5rem;
-}
-
-.quotes .quote {
-  font-style: italic;
-  color: var(--text);
-}
-
-.outlook-snippet {
-  font-size: 0.85rem;
-  line-height: 1.5;
-  color: var(--muted);
-  white-space: pre-wrap;
-  word-break: break-word;
-  margin: 0;
-}
-
-.driver-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-bottom: 0.75rem;
-}
-
-.driver-tag {
-  font-size: 0.75rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
-  background: var(--border);
-  color: var(--text);
-}
-
-.drivers-list {
-  font-size: 0.9rem;
-  margin: 0.5rem 0;
-}
-
-.drivers-list ul {
-  margin: 0.35rem 0 0 1rem;
-  padding: 0;
-}
-
-.driver-snippet {
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-.driver-impact-positive { color: var(--positive); }
-.driver-impact-negative { color: var(--negative); }
-.driver-impact-neutral { color: var(--muted); }
-
-.analysis-badge {
-  display: inline-block;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background: var(--border);
-  color: var(--text);
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: theme('colors.line-strong');
+  }
 }
