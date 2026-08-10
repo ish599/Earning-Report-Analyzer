@@ -1,13 +1,15 @@
 {
-  "name": "rh-sentiment",
+  "name": "earnings-intelligence",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/prebuild.js && next build",
-    "build:vercel": "next build",
+    "build": "next build",
     "start": "next start",
-    "process": "python scripts/process_data.py"
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint",
+    "check:segmentation": "tsx scripts/check-segmentation.ts",
+    "build:fixtures": "python scripts/build-fixtures.py"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",

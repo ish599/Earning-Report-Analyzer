@@ -14,7 +14,6 @@ import {
   compareQuartersDesc,
   quarterLabel,
   type CompanyProfile,
-  type EarningsAnalysis,
   type FinancialResult,
   type TranscriptRef,
 } from '@/lib/types';
@@ -22,67 +21,60 @@ import {
 /**
  * Ingestion and analysis orchestration.
  *
- * Ordering matters and is deliberate:
+ * Split into two phases because they have very different cost profiles:
  *
- *   1. Resolve the company and the list of available calls.
- *   2. Persist transcripts and market data — cheap, and useful even if the
- *      analysis step later fails.
- *   3. Analyze ONLY quarters with no cached analysis at the current version.
- *   4. Analyze oldest-to-newest, because each quarter's analysis becomes the
- *      prior-quarter context for the next one. Running these in parallel would
- *      be faster but would destroy the quarter-over-quarter comparison, which
- *      is the product's core feature.
+ *   `prepareCompany` — network-bound and fast. Resolves the company, stores
+ *   transcripts, financials, and price reactions. Idempotent, so it is safe to
+ *   call on every analyze request.
+ *
+ *   `analyzeNextPending` — model-bound and slow. Analyzes exactly ONE quarter
+ *   per invocation, which keeps a single request comfortably inside a
+ *   serverless execution limit. The client calls it repeatedly and renders
+ *   progress between calls.
+ *
+ * Quarters are analyzed oldest first, because each one becomes the
+ * prior-quarter context for the next. Parallelising would be faster but would
+ * destroy the quarter-over-quarter comparison, which is the product's point.
  *
  * This module performs I/O but holds no HTTP or React concerns, so it can move
  * to a separate worker service later without touching its callers.
  */
 
-export interface IngestResult {
+export interface PreparedCompany {
   company: CompanyProfile;
   companyId: string;
-  analyzed: number;
-  skipped: number;
-  failures: { period: string; message: string }[];
+  /** Target quarters, newest first, with the stored call id for each. */
+  targets: { ref: TranscriptRef; callId: string }[];
+  warnings: { period: string; message: string }[];
 }
 
-export interface IngestOptions {
-  /** How many of the most recent quarters to analyze. */
+export interface PrepareOptions {
   quarters?: number;
-  /** Analyze one specific quarter instead of the recent window. */
   only?: { fiscalYear: number; fiscalQuarter: number };
-  /** Re-run analysis even when a cached result exists. */
-  force?: boolean;
-  onProgress?: (message: string) => void;
 }
 
-export async function ingestCompany(
+export async function prepareCompany(
   rawTicker: string,
-  options: IngestOptions = {},
-): Promise<IngestResult> {
-  const notify = options.onProgress ?? (() => {});
-
-  notify('Resolving company…');
+  options: PrepareOptions = {},
+): Promise<PreparedCompany> {
   const company = await getCompany(rawTicker);
   const ticker = company.ticker;
   const companyId = await store.upsertCompany(company);
 
-  notify('Retrieving earnings call transcripts…');
   const available = await getTranscriptDates(ticker);
+  const selected = selectTargets(available, options);
 
-  const targets = selectTargets(available, options);
-  if (targets.length === 0) {
+  if (selected.length === 0) {
     throw new AppError(
       'transcript_unavailable',
       `No transcripts matched the requested period for ${ticker}.`,
     );
   }
 
-  // Store transcripts before anything expensive runs, so a later failure still
-  // leaves the app with something to display.
-  const stored: { ref: TranscriptRef; callId: string; text: string }[] = [];
-  const failures: IngestResult['failures'] = [];
+  const warnings: PreparedCompany['warnings'] = [];
+  const targets: PreparedCompany['targets'] = [];
 
-  for (const ref of [...targets].sort((a, b) => -compareQuartersDesc(a, b))) {
+  for (const ref of selected) {
     try {
       const transcript = await getTranscript(ticker, ref.fiscalYear, ref.fiscalQuarter);
       const call = await store.upsertCall({
@@ -94,55 +86,156 @@ export async function ingestCompany(
         transcriptText: transcript.text,
         transcriptSource: transcript.source,
       });
-      stored.push({ ref, callId: call.id, text: transcript.text });
+      targets.push({ ref: { ...ref, callDate: transcript.callDate ?? ref.callDate }, callId: call.id });
     } catch (error) {
-      failures.push({ period: quarterLabel(ref), message: toMessage(error) });
+      warnings.push({ period: quarterLabel(ref), message: toMessage(error) });
     }
   }
 
-  if (stored.length === 0) {
+  if (targets.length === 0) {
+    throw new AppError('transcript_unavailable', `No transcripts could be retrieved for ${ticker}.`);
+  }
+
+  // Supplementary data. Neither is allowed to block analysis: the UI renders
+  // missing figures as em dashes rather than inventing them.
+  await attachFinancials(ticker, targets).catch((error) =>
+    warnings.push({ period: 'Financial results', message: toMessage(error) }),
+  );
+  await attachPriceReactions(ticker, targets).catch((error) =>
+    warnings.push({ period: 'Price history', message: toMessage(error) }),
+  );
+
+  return { company, companyId, targets, warnings };
+}
+
+export interface AnalyzeStepResult {
+  /** Quarter analyzed in this step, or null when nothing was pending. */
+  analyzed: string | null;
+  completed: number;
+  total: number;
+  done: boolean;
+  error: { period: string; message: string } | null;
+}
+
+/**
+ * Analyzes the oldest quarter that has no cached analysis at the current
+ * version, and returns progress.
+ *
+ * Cached quarters are skipped but still contribute their stored analysis to
+ * the context chain, which is what lets an incremental "one new quarter" run
+ * be as well-informed as a full rebuild.
+ */
+export async function analyzeNextPending(
+  prepared: PreparedCompany,
+  options: { force?: boolean } = {},
+): Promise<AnalyzeStepResult> {
+  const { company, companyId, targets } = prepared;
+  const total = targets.length;
+
+  if (!isXaiConfigured()) {
     throw new AppError(
-      'transcript_unavailable',
-      `No transcripts could be retrieved for ${ticker}.`,
+      'llm_not_configured',
+      'Transcript analysis is not configured. Set XAI_API_KEY to enable it.',
     );
   }
 
-  notify('Retrieving financial results…');
-  await attachFinancials(ticker, stored).catch((error) => {
-    // Financials are supplementary. Their absence must not block the analysis,
-    // and the UI already renders missing figures as em dashes.
-    failures.push({ period: 'financials', message: toMessage(error) });
-  });
+  // Oldest first so prior-quarter context accumulates naturally.
+  const chronological = [...targets].sort((a, b) => -compareQuartersDesc(a.ref, b.ref));
+  const priorContext = await loadEarlierContext(companyId, company.ticker, chronological[0]?.ref);
 
-  notify('Retrieving price history…');
-  await attachPriceReactions(ticker, stored).catch((error) => {
-    failures.push({ period: 'price history', message: toMessage(error) });
-  });
+  let completed = 0;
 
-  notify('Analyzing latest earnings calls…');
-  const { analyzed, skipped, analysisFailures } = await analyzeSequentially(
-    company,
-    companyId,
-    stored,
-    options,
-    notify,
-  );
+  for (const item of chronological) {
+    const cached = options.force ? null : await store.getAnalysis(item.callId);
 
-  return {
-    company,
-    companyId,
-    analyzed,
-    skipped,
-    failures: [...failures, ...analysisFailures],
-  };
+    if (cached) {
+      completed += 1;
+      priorContext.push(toPriorContext(item.ref, cached));
+      continue;
+    }
+
+    const label = quarterLabel(item.ref);
+
+    try {
+      const text = await store.getTranscriptText(item.callId);
+      if (!text) {
+        throw new AppError('transcript_unavailable', `No stored transcript for ${label}.`);
+      }
+
+      const analysis = await analyzeTranscript({
+        companyName: company.companyName,
+        ticker: company.ticker,
+        period: item.ref,
+        callDate: item.ref.callDate,
+        transcriptText: text,
+        segments: segmentTranscript(text),
+        priorQuarters: priorContext.slice(-QOQ_LOOKBACK_QUARTERS),
+      });
+
+      await store.saveAnalysis(item.callId, analysis);
+
+      return {
+        analyzed: label,
+        completed: completed + 1,
+        total,
+        done: completed + 1 >= total,
+        error: null,
+      };
+    } catch (error) {
+      // Report the failure and mark this quarter consumed, so the client's
+      // loop advances instead of retrying the same broken quarter forever.
+      return {
+        analyzed: null,
+        completed: completed + 1,
+        total,
+        done: completed + 1 >= total,
+        error: { period: label, message: toMessage(error) },
+      };
+    }
+  }
+
+  return { analyzed: null, completed, total, done: true, error: null };
 }
 
-function selectTargets(available: TranscriptRef[], options: IngestOptions): TranscriptRef[] {
+/** Full synchronous run. Suitable for scripts, not for a serverless request. */
+export async function ingestCompany(
+  rawTicker: string,
+  options: PrepareOptions & { force?: boolean; onProgress?: (message: string) => void } = {},
+): Promise<{ prepared: PreparedCompany; analyzed: number; failures: { period: string; message: string }[] }> {
+  const notify = options.onProgress ?? (() => {});
+
+  notify('Resolving company and retrieving transcripts…');
+  const prepared = await prepareCompany(rawTicker, options);
+
+  const failures = [...prepared.warnings];
+  let analyzed = 0;
+  let guard = prepared.targets.length + 1;
+
+  for (;;) {
+    const step = await analyzeNextPending(prepared, { force: options.force && analyzed === 0 });
+    if (step.error) failures.push(step.error);
+    if (step.analyzed) {
+      analyzed += 1;
+      notify(`Analyzed ${step.analyzed} (${step.completed}/${step.total})`);
+    }
+    if (step.done) break;
+
+    guard -= 1;
+    if (guard <= 0) break;
+  }
+
+  return { prepared, analyzed, failures };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function selectTargets(available: TranscriptRef[], options: PrepareOptions): TranscriptRef[] {
   if (options.only) {
     const match = available.find(
       (r) =>
-        r.fiscalYear === options.only!.fiscalYear &&
-        r.fiscalQuarter === options.only!.fiscalQuarter,
+        r.fiscalYear === options.only!.fiscalYear && r.fiscalQuarter === options.only!.fiscalQuarter,
     );
     return match ? [match] : [];
   }
@@ -151,83 +244,7 @@ function selectTargets(available: TranscriptRef[], options: IngestOptions): Tran
   return [...available].sort(compareQuartersDesc).slice(0, count);
 }
 
-/**
- * Analyzes quarters oldest first so each call can see the preceding one.
- *
- * Cached quarters are not re-analyzed, but they still contribute their stored
- * analysis to the context chain — that is what makes an incremental "one new
- * quarter" run as informative as a full rebuild.
- */
-async function analyzeSequentially(
-  company: CompanyProfile,
-  companyId: string,
-  stored: { ref: TranscriptRef; callId: string; text: string }[],
-  options: IngestOptions,
-  notify: (message: string) => void,
-): Promise<{ analyzed: number; skipped: number; analysisFailures: IngestResult['failures'] }> {
-  const analysisFailures: IngestResult['failures'] = [];
-  let analyzed = 0;
-  let skipped = 0;
-
-  if (!isXaiConfigured()) {
-    return {
-      analyzed: 0,
-      skipped: stored.length,
-      analysisFailures: [
-        {
-          period: 'analysis',
-          message: 'Transcript analysis is not configured. Set XAI_API_KEY to enable it.',
-        },
-      ],
-    };
-  }
-
-  const chronological = [...stored].sort((a, b) => -compareQuartersDesc(a.ref, b.ref));
-  const priorContext: PriorQuarterContext[] = await loadEarlierContext(
-    companyId,
-    company.ticker,
-    chronological[0]?.ref,
-  );
-
-  for (const item of chronological) {
-    const label = quarterLabel(item.ref);
-
-    if (!options.force) {
-      const cached = await store.getAnalysis(item.callId);
-      if (cached) {
-        skipped += 1;
-        priorContext.push(toPriorContext(item.ref, cached));
-        continue;
-      }
-    }
-
-    notify(`Analyzing ${label}…`);
-
-    try {
-      const analysis = await analyzeTranscript({
-        companyName: company.companyName,
-        ticker: company.ticker,
-        period: item.ref,
-        callDate: item.ref.callDate,
-        transcriptText: item.text,
-        segments: segmentTranscript(item.text),
-        priorQuarters: priorContext.slice(-QOQ_LOOKBACK_QUARTERS),
-      });
-
-      await store.saveAnalysis(item.callId, analysis);
-      priorContext.push(toPriorContext(item.ref, analysis));
-      analyzed += 1;
-    } catch (error) {
-      // One bad quarter must not abort the run; later quarters simply lose one
-      // step of prior context.
-      analysisFailures.push({ period: label, message: toMessage(error) });
-    }
-  }
-
-  return { analyzed, skipped, analysisFailures };
-}
-
-/** Pulls already-stored analyses for quarters preceding the earliest target. */
+/** Stored analyses for quarters preceding the earliest target. */
 async function loadEarlierContext(
   companyId: string,
   ticker: string,
@@ -253,23 +270,19 @@ async function loadEarlierContext(
       })
       .filter((c): c is PriorQuarterContext => c !== null);
   } catch {
-    // Context is an enhancement; proceeding without it is better than failing.
+    // Context is an enhancement; proceeding without it beats failing.
     return [];
   }
 }
 
-// ---------------------------------------------------------------------------
-// Supplementary data
-// ---------------------------------------------------------------------------
-
 async function attachFinancials(
   ticker: string,
-  stored: { ref: TranscriptRef; callId: string }[],
+  targets: { ref: TranscriptRef; callId: string }[],
 ): Promise<void> {
   const financials = await getQuarterlyFinancials(ticker);
   if (financials.size === 0) return;
 
-  for (const item of stored) {
+  for (const item of targets) {
     const match: FinancialResult | undefined = financials.get(
       `${item.ref.fiscalYear}-${item.ref.fiscalQuarter}`,
     );
@@ -279,10 +292,10 @@ async function attachFinancials(
 
 async function attachPriceReactions(
   ticker: string,
-  stored: { ref: TranscriptRef; callId: string }[],
+  targets: { ref: TranscriptRef; callId: string }[],
 ): Promise<void> {
-  const callDates = stored
-    .map((s) => s.ref.callDate)
+  const callDates = targets
+    .map((t) => t.ref.callDate)
     .filter((d): d is string => typeof d === 'string');
 
   const window = priceWindowFor(callDates);
@@ -291,11 +304,13 @@ async function attachPriceReactions(
   const prices = await getHistoricalPrices(ticker, window.from, window.to);
   if (prices.length === 0) return;
 
-  for (const item of stored) {
+  for (const item of targets) {
     if (!item.ref.callDate) continue;
     const timing = await getReleaseTiming(ticker, item.ref.callDate);
-    const reaction = computePriceReaction(item.ref.callDate, timing, prices);
-    await store.savePriceReaction(item.callId, reaction);
+    await store.savePriceReaction(
+      item.callId,
+      computePriceReaction(item.ref.callDate, timing, prices),
+    );
   }
 }
 
@@ -303,5 +318,3 @@ function toMessage(error: unknown): string {
   if (error instanceof AppError) return error.userMessage;
   return 'An unexpected error occurred.';
 }
-
-export type { EarningsAnalysis };
