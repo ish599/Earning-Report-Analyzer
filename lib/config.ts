@@ -21,11 +21,11 @@ export const config = {
     baseUrl: read('FMP_BASE_URL') ?? 'https://financialmodelingprep.com',
   },
   xai: {
-    apiKey: read('XAI_API_KEY'),
-    baseUrl: read('XAI_BASE_URL') ?? 'https://api.x.ai/v1',
-    model: read('XAI_MODEL') ?? 'grok-4',
+    apiKey: process.env.XAI_API_KEY?.trim() ?? null,
+    baseUrl: process.env.XAI_BASE_URL?.trim() ?? 'https://api.x.ai/v1',
+    model: process.env.XAI_MODEL?.trim() ?? 'grok-4',
     /** Serverless functions cap out well before this; keep headroom. */
-    timeoutMs: Number(read('XAI_TIMEOUT_MS') ?? 90_000),
+    timeoutMs: Number(process.env.XAI_TIMEOUT_MS?.trim() ?? 90_000),
   },
   roic: {
     apiKey: read('ROIC_API_KEY'),

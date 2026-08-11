@@ -55,8 +55,9 @@ export async function completeJson(
       method: 'POST',
       signal: controller.signal,
       headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${config.xai.apiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${config.xai.apiKey}`,
       },
       body: JSON.stringify({
         model: config.xai.model,
