@@ -84,6 +84,26 @@ export async function getTranscriptDates(rawTicker: string): Promise<TranscriptR
   return refs;
 }
 
+export async function getLatestTranscriptRef(rawTicker: string): Promise<TranscriptRef> {
+  const ticker = normalizeTicker(rawTicker);
+
+  if (isRoicConfigured()) {
+    const latest = await roic.getLatestTranscript(ticker);
+    return {
+      ticker: latest.ticker,
+      fiscalYear: latest.fiscalYear,
+      fiscalQuarter: latest.fiscalQuarter,
+      callDate: latest.callDate,
+    };
+  }
+
+  const available = await getTranscriptDates(ticker);
+  if (available.length === 0) {
+    throw new AppError('transcript_unavailable', `No transcripts are available for ${ticker}.`);
+  }
+  return available[0];
+}
+
 export async function getTranscript(
   rawTicker: string,
   year: number,

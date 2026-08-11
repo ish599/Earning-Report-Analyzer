@@ -31,45 +31,62 @@ export async function getAvailableCalls(rawTicker: string): Promise<TranscriptRe
         identifier = `${company.exchange}:${ticker}`;
       }
     } catch {
-      // If company lookup fails, fall back to latest endpoint below.
       identifier = null;
     }
 
     if (identifier) {
-      const path = 'v3.0.0/earnings-calls';
-      const { url, response } = await roicRawFetch(path, { identifier, order: 'desc' });
-      const payload = await response.json().catch(() => null);
-      const items = payload?.data;
-      if (!payload || !Array.isArray(items)) {
-        throw new AppError('provider_error', 'Transcript provider returned unexpected data.');
+      try {
+        const path = 'v3.0.0/earnings-calls';
+        const { response } = await roicRawFetch(path, { identifier, order: 'desc' });
+        const payload = await response.json().catch(() => null);
+        const items = Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload)
+          ? payload
+          : Array.isArray((payload as any)?.items)
+          ? (payload as any).items
+          : null;
+
+        if (payload && Array.isArray(items)) {
+          const refs: TranscriptRef[] = (items as any[])
+            .map((r) => {
+              const rawSymbol = String(r.symbol ?? r.ticker ?? '');
+              const extractedTicker = rawSymbol.includes(':') ? rawSymbol.split(':').pop() ?? ticker : ticker;
+              const year = Number(r.fiscal_year ?? r.fiscalYear ?? r.year);
+              const quarter = Number(r.fiscal_quarter ?? r.fiscalQuarter ?? r.quarter);
+              const date = toDateString(r.date ?? r.callDate ?? r.eventDate ?? r.reportDate);
+              if (!Number.isFinite(year) || !Number.isFinite(quarter)) return null;
+              return {
+                ticker: extractedTicker,
+                fiscalYear: year,
+                fiscalQuarter: quarter,
+                callDate: date,
+                providerId: String(r.id ?? r.providerId ?? ''),
+              } as TranscriptRef;
+            })
+            .filter((x): x is TranscriptRef => x !== null)
+            .sort((a, b) =>
+              a.fiscalYear === b.fiscalYear ? b.fiscalQuarter - a.fiscalQuarter : b.fiscalYear - a.fiscalYear,
+            );
+
+          if (refs.length > 0) return refs;
+        }
+      } catch {
+        // The ROIC v3 listing endpoint is useful metadata but not required for
+        // the MVP. If it fails, fall back to the latest transcript instead.
       }
-
-      const refs: TranscriptRef[] = (items as any[])
-        .map((r) => {
-          const rawSymbol = String(r.symbol ?? '');
-          const extractedTicker = rawSymbol.includes(':') ? rawSymbol.split(':').pop() ?? ticker : ticker;
-          const year = Number(r.fiscal_year ?? r.fiscalYear);
-          const quarter = Number(r.fiscal_quarter ?? r.fiscalQuarter);
-          const date = toDateString(r.date ?? r.callDate);
-          if (!Number.isFinite(year) || !Number.isFinite(quarter)) return null;
-          return {
-            ticker: extractedTicker,
-            fiscalYear: year,
-            fiscalQuarter: quarter,
-            callDate: date,
-            providerId: String(r.id ?? ''),
-          } as TranscriptRef;
-        })
-        .filter((x): x is TranscriptRef => x !== null)
-        .sort((a, b) => (a.fiscalYear === b.fiscalYear ? b.fiscalQuarter - a.fiscalQuarter : b.fiscalYear - a.fiscalYear));
-
-      if (refs.length > 0) return refs;
     }
 
-    // If v3 listing is unavailable or produced no refs, fall back to the v2
-    // latest endpoint to return at least the most recent transcript.
     const latest = await getLatestTranscript(ticker).catch(() => null);
-    if (latest) return [ { ticker: latest.ticker, fiscalYear: latest.fiscalYear, fiscalQuarter: latest.fiscalQuarter, callDate: latest.callDate } ];
+    if (latest)
+      return [
+        {
+          ticker: latest.ticker,
+          fiscalYear: latest.fiscalYear,
+          fiscalQuarter: latest.fiscalQuarter,
+          callDate: latest.callDate,
+        },
+      ];
 
     throw new AppError('transcript_unavailable', `No transcripts available for ${ticker}.`);
   } catch (e) {
@@ -78,43 +95,47 @@ export async function getAvailableCalls(rawTicker: string): Promise<TranscriptRe
   }
 }
 
+const MIN_TRANSCRIPT_CHARS = 500;
+
 export function normalizeRoicLatestPayload(payload: unknown): Transcript {
   if (typeof payload !== 'object' || payload === null) {
     throw new AppError('provider_error', 'Transcript provider returned unexpected data.');
   }
 
-  const symbol = (payload as any).symbol;
-  const year = (payload as any).year;
-  const quarter = (payload as any).quarter;
-  const dateValue = (payload as any).date;
-  const content = (payload as any).content;
+  const data = payload as Record<string, unknown>;
+  const symbol = String(data.symbol ?? data.ticker ?? '').trim();
+  const year = Number(data.year ?? data.fiscalYear);
+  const quarter = Number(data.quarter ?? data.fiscalQuarter);
+  const dateValue = String(data.date ?? data.callDate ?? data.eventDate ?? '').trim();
+  const content = String(data.content ?? data.transcript ?? data.text ?? '').trim();
 
   if (
-    typeof symbol !== 'string' ||
-    !Number.isFinite(Number(year)) ||
-    !Number.isFinite(Number(quarter)) ||
-    typeof dateValue !== 'string' ||
-    typeof content !== 'string' ||
-    content.trim().length === 0
+    symbol.length === 0 ||
+    !Number.isFinite(year) ||
+    !Number.isFinite(quarter) ||
+    quarter < 1 ||
+    quarter > 4 ||
+    dateValue.length === 0 ||
+    content.length < MIN_TRANSCRIPT_CHARS
   ) {
     throw new AppError('provider_error', 'Transcript provider returned unexpected data.');
   }
 
   return {
     ticker: symbol.toUpperCase(),
-    fiscalYear: Number(year),
-    fiscalQuarter: Number(quarter),
+    fiscalYear: year,
+    fiscalQuarter: quarter,
     callDate: toDateString(dateValue),
-    text: content.trim(),
+    text: content,
     source: 'roic',
-  } as Transcript;
+  };
 }
 
 export async function getLatestTranscript(rawTicker: string): Promise<Transcript> {
   const ticker = rawTicker.toUpperCase();
   try {
     const path = `v2/company/earnings-calls/latest/${ticker}`;
-    const { url, response } = await roicRawFetch(path);
+    const { response } = await roicRawFetch(path);
     const payload = await response.json().catch(() => null);
     return normalizeRoicLatestPayload(payload);
   } catch (e) {

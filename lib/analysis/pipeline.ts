@@ -61,7 +61,9 @@ export async function prepareCompany(
   const ticker = company.ticker;
   const companyId = await store.upsertCompany(company);
 
-  const available = await getTranscriptDates(ticker);
+  const available = isRoicConfigured() && !options.only
+    ? [await getLatestTranscriptRef(ticker)]
+    : await getTranscriptDates(ticker);
   const selected = selectTargets(available, options);
 
   if (selected.length === 0) {
