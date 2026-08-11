@@ -1,5 +1,6 @@
 import 'server-only';
 import { ok } from '@/lib/api/respond';
+import { config } from '@/lib/config';
 
 /**
  * GET /api/debug/gemini
@@ -10,7 +11,7 @@ import { ok } from '@/lib/api/respond';
  * mapper. The API key is never returned or logged.
  */
 export async function GET() {
-  const model = 'gemini-2.5-flash';
+  const model = config.gemini.model;
   const apiKey = process.env.GEMINI_API_KEY?.trim();
 
   if (!apiKey) {

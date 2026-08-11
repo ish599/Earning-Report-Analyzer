@@ -30,7 +30,7 @@ export const config = {
   gemini: {
     apiKey: process.env.GEMINI_API_KEY?.trim() ?? null,
     baseUrl: process.env.GEMINI_BASE_URL?.trim() ?? 'https://generativelanguage.googleapis.com/v1beta/models',
-    model: process.env.GEMINI_MODEL?.trim() ?? 'gemini-2.5-flash',
+    model: process.env.GEMINI_MODEL?.trim() ?? 'gemini-3.6-flash',
     /** Serverless functions cap out well before this; keep headroom. */
     timeoutMs: Number(process.env.GEMINI_TIMEOUT_MS?.trim() ?? 90_000),
   },
