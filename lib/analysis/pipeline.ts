@@ -1,13 +1,13 @@
 import 'server-only';
 import { getCompany } from '@/lib/providers/company';
-import { getTranscript, getTranscriptDates } from '@/lib/providers/transcripts';
+import { getTranscript, getTranscriptDates, getLatestTranscriptRef } from '@/lib/providers/transcripts';
 import { getQuarterlyFinancials, getReleaseTiming } from '@/lib/providers/financials';
 import { getHistoricalPrices, priceWindowFor } from '@/lib/providers/marketData';
 import { segmentTranscript } from '@/lib/transcript/segment';
 import { analyzeTranscript, toPriorContext } from '@/lib/ai/analyzeTranscript';
 import type { PriorQuarterContext } from '@/lib/ai/prompts';
 import { computePriceReaction } from './priceReaction';
-import { isXaiConfigured, INITIAL_ANALYSIS_QUARTERS, QOQ_LOOKBACK_QUARTERS } from '@/lib/config';
+import { isRoicConfigured, isXaiConfigured, INITIAL_ANALYSIS_QUARTERS, QOQ_LOOKBACK_QUARTERS } from '@/lib/config';
 import * as store from '@/lib/db/store';
 import {
   AppError,
