@@ -1,53 +1,77 @@
 import 'server-only';
-import { handle, ok } from '@/lib/api/respond';
-import { config, isGeminiConfigured } from '@/lib/config';
-import { completeJson } from '@/lib/ai/gemini';
+import { ok } from '@/lib/api/respond';
 
+/**
+ * GET /api/debug/gemini
+ *
+ * Raw connectivity check for Google Gemini. Makes a direct server-side fetch
+ * to the generateContent endpoint and returns Google's actual response so
+ * real failures are visible instead of being hidden by the provider error
+ * mapper. The API key is never returned or logged.
+ */
 export async function GET() {
-  return handle(async () => {
-    const model = config.gemini.model;
-    if (!isGeminiConfigured()) {
-      return ok({
-        configured: false,
-        model,
-        status: 0,
-        statusText: 'Gemini is not configured',
-        responsePreview: null,
-      });
-    }
+  const model = 'gemini-2.5-flash';
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
 
-    try {
-      const result = await completeJson({
-        system: 'You are a helpful assistant.',
-        user: 'Respond with exactly: OK',
-        schemaName: 'debug',
-        jsonSchema: {
-          type: 'object',
-          properties: {
-            response: { type: 'string', enum: ['OK'] },
-          },
-          required: ['response'],
-          additionalProperties: false,
+  if (!apiKey) {
+    return ok({
+      configured: false,
+      model,
+      status: 0,
+      statusText: 'Gemini is not configured',
+      contentType: null,
+      bodyPreview: null,
+    });
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
         },
-      });
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: 'Respond with exactly OK',
+                },
+              ],
+            },
+          ],
+        }),
+        cache: 'no-store',
+      },
+    );
+  } catch (error) {
+    const err = error as Error;
+    return ok({
+      configured: true,
+      model,
+      networkError: {
+        name: err.name,
+        message: err.message,
+        cause:
+          err.cause instanceof Error
+            ? { name: err.cause.name, message: err.cause.message }
+            : undefined,
+      },
+    });
+  }
 
-      return ok({
-        configured: true,
-        model,
-        status: 200,
-        statusText: 'OK',
-        responsePreview: JSON.stringify(result.data),
-        modelUsed: result.modelUsed,
-      });
-    } catch (error) {
-      const statusText = error instanceof Error ? error.message : String(error);
-      return ok({
-        configured: true,
-        model,
-        status: 0,
-        statusText,
-        responsePreview: null,
-      });
-    }
+  const body = await response.text();
+
+  return ok({
+    configured: true,
+    model,
+    status: response.status,
+    statusText: response.statusText,
+    contentType: response.headers.get('content-type'),
+    bodyPreview: body.slice(0, 1000),
   });
 }
