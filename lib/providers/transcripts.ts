@@ -1,7 +1,8 @@
 import 'server-only';
 import { fmpFetch, toDateString } from './fmp/client';
 import { fixtureTranscript, fixtureTranscriptRefs } from './fixtures';
-import { isFmpConfigured } from '@/lib/config';
+import { isFmpConfigured, isRoicConfigured } from '@/lib/config';
+import * as roic from './roicTranscripts';
 import {
   AppError,
   compareQuartersDesc,
@@ -33,6 +34,10 @@ const MIN_TRANSCRIPT_CHARS = 500;
 /** Lists the calls available for a ticker, newest first. */
 export async function getTranscriptDates(rawTicker: string): Promise<TranscriptRef[]> {
   const ticker = normalizeTicker(rawTicker);
+
+  if (isRoicConfigured()) {
+    return roic.getAvailableCalls(ticker);
+  }
 
   if (!isFmpConfigured()) {
     const refs = fixtureTranscriptRefs(ticker);
@@ -85,6 +90,10 @@ export async function getTranscript(
   quarter: number,
 ): Promise<Transcript> {
   const ticker = normalizeTicker(rawTicker);
+
+  if (isRoicConfigured()) {
+    return roic.getTranscript(ticker, year, quarter);
+  }
 
   if (!isFmpConfigured()) {
     const fixture = fixtureTranscript(ticker, year, quarter);

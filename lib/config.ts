@@ -27,6 +27,10 @@ export const config = {
     /** Serverless functions cap out well before this; keep headroom. */
     timeoutMs: Number(read('XAI_TIMEOUT_MS') ?? 90_000),
   },
+  roic: {
+    apiKey: read('ROIC_API_KEY'),
+    baseUrl: read('ROIC_BASE_URL') ?? null,
+  },
   supabase: {
     url: read('SUPABASE_URL') ?? read('NEXT_PUBLIC_SUPABASE_URL'),
     secretKey: read('SUPABASE_SECRET_KEY'),
@@ -37,6 +41,7 @@ export const isFmpConfigured = (): boolean => config.fmp.apiKey !== null;
 export const isXaiConfigured = (): boolean => config.xai.apiKey !== null;
 export const isSupabaseConfigured = (): boolean =>
   config.supabase.url !== null && config.supabase.secretKey !== null;
+export const isRoicConfigured = (): boolean => config.roic.apiKey !== null && config.roic.baseUrl !== null;
 
 /**
  * Bump when the prompt, schema, or scoring logic changes in a way that makes
