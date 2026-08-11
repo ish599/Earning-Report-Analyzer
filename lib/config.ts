@@ -8,6 +8,8 @@ import 'server-only';
  * FMP_API_KEY and XAI_API_KEY cannot reach the browser.
  */
 
+const apiKey = process.env.FMP_API_KEY?.trim() ?? null;
+
 function read(name: string): string | null {
   const value = process.env[name];
   return value && value.trim().length > 0 ? value.trim() : null;
@@ -15,7 +17,7 @@ function read(name: string): string | null {
 
 export const config = {
   fmp: {
-    apiKey: read('FMP_API_KEY'),
+    apiKey,
     baseUrl: read('FMP_BASE_URL') ?? 'https://financialmodelingprep.com',
   },
   xai: {

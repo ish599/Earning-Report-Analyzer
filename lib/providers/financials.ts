@@ -58,8 +58,9 @@ export async function getQuarterlyFinancials(
   if (!isFmpConfigured()) return out;
 
   const [statements, earnings] = await Promise.all([
-    fmpFetch<FmpIncomeStatement[]>(`income-statement/${ticker}`, {
-      query: { period: 'quarter', limit },
+    fmpFetch<FmpIncomeStatement[]>('income-statement', {
+      version: 'stable',
+      query: { symbol: ticker, period: 'quarter', limit },
       revalidate: 60 * 60 * 12,
     }).catch(() => [] as FmpIncomeStatement[]),
     getEarningsData(ticker).catch(() => [] as NormalizedEarnings[]),
@@ -133,7 +134,9 @@ export async function getEarningsData(rawTicker: string): Promise<NormalizedEarn
   const ticker = normalizeTicker(rawTicker);
   if (!isFmpConfigured()) return [];
 
-  const rows = await fmpFetch<FmpEarningsRow[]>(`historical/earning_calendar/${ticker}`, {
+  const rows = await fmpFetch<FmpEarningsRow[]>('historical/earning_calendar', {
+    version: 'stable',
+    query: { symbol: ticker },
     revalidate: 60 * 60 * 12,
   });
 

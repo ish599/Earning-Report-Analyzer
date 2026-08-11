@@ -67,10 +67,18 @@ export async function getCompany(rawTicker: string): Promise<CompanyProfile> {
   }
 
   const [profiles, quotes] = await Promise.all([
-    fmpFetch<FmpProfile[]>(`profile/${ticker}`, { revalidate: 60 * 60 * 24 }),
+    fmpFetch<FmpProfile[]>('profile', {
+      version: 'stable',
+      query: { symbol: ticker },
+      revalidate: 60 * 60 * 24,
+    }),
     // Quotes move intraday; a short window keeps the header current without
     // hammering the provider on every render.
-    fmpFetch<FmpQuote[]>(`quote/${ticker}`, { revalidate: 60 }).catch(() => [] as FmpQuote[]),
+    fmpFetch<FmpQuote[]>('quote', {
+      version: 'stable',
+      query: { symbol: ticker },
+      revalidate: 60,
+    }).catch(() => [] as FmpQuote[]),
   ]);
 
   const profile = profiles?.[0];

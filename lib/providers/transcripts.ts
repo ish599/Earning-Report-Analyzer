@@ -46,7 +46,7 @@ export async function getTranscriptDates(rawTicker: string): Promise<TranscriptR
   }
 
   const rows = await fmpFetch<FmpTranscriptDate[]>('earning_call_transcript', {
-    version: 'v4',
+    version: 'stable',
     query: { symbol: ticker },
     revalidate: 60 * 60 * 6,
   });
@@ -97,8 +97,9 @@ export async function getTranscript(
     return fixture;
   }
 
-  const rows = await fmpFetch<FmpTranscript[]>(`earning_call_transcript/${ticker}`, {
-    query: { year, quarter },
+  const rows = await fmpFetch<FmpTranscript[]>('earning_call_transcript', {
+    version: 'stable',
+    query: { symbol: ticker, year, quarter },
     // Transcripts are immutable once published; cache hard.
     revalidate: 60 * 60 * 24 * 30,
   });

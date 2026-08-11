@@ -1,13 +1,15 @@
 import 'server-only';
 import { handle, ok } from '@/lib/api/respond';
-import { fmpFetch } from '@/lib/providers/fmp/client';
+import { fmpRawFetch, redactFmpUrl } from '@/lib/providers/fmp/client';
 import { config, isFmpConfigured } from '@/lib/config';
-import { AppError } from '@/lib/types';
 
 interface FmpDebugTestResult {
   name: string;
   ok: boolean;
-  details?: Record<string, unknown>;
+  requestPath?: string;
+  status?: number;
+  contentType?: string | null;
+  providerBody?: string;
   error?: { code: string; message: string };
 }
 
@@ -25,49 +27,32 @@ export async function GET() {
       });
     }
 
-    tests.push(
-      await runTest('profile', async () => {
-        const response = await fmpFetch<Record<string, unknown>[]>(`profile/${TEST_TICKER}`, {
-          revalidate: 60 * 60,
-        });
-        return {
-          status: response ? 'ok' : 'empty',
-          resultCount: Array.isArray(response) ? response.length : 0,
-        };
-      }),
-    );
+    tests.push(await runRawTest('profile', 'profile', {
+      version: 'stable',
+      query: { symbol: TEST_TICKER },
+      revalidate: 60 * 60,
+    }));
 
-    tests.push(
-      await runTest('quote', async () => {
-        const response = await fmpFetch<Record<string, unknown>[]>(`quote/${TEST_TICKER}`, {
-          revalidate: 60 * 5,
-        });
-        return {
-          status: response ? 'ok' : 'empty',
-          resultCount: Array.isArray(response) ? response.length : 0,
-        };
-      }),
-    );
+    tests.push(await runRawTest('quote', 'quote', {
+      version: 'stable',
+      query: { symbol: TEST_TICKER },
+      revalidate: 60 * 5,
+    }));
 
-    tests.push(
-      await runTest('transcript list', async () => {
-        const response = await fmpFetch<unknown[]>(`earning_call_transcript`, {
-          version: 'v4',
-          query: { symbol: TEST_TICKER },
-          revalidate: 60 * 60 * 6,
-        });
-        return {
-          status: response ? 'ok' : 'empty',
-          resultCount: Array.isArray(response) ? response.length : 0,
-        };
-      }),
-    );
+    tests.push(await runRawTest('transcript list', 'earning_call_transcript', {
+      version: 'stable',
+      query: { symbol: TEST_TICKER },
+      revalidate: 60 * 60 * 6,
+    }));
 
-    tests.push(
-      await runTest('metadata', async () => ({
-        baseUrl: config.fmp.baseUrl,
-      })),
-    );
+    tests.push({
+      name: 'metadata',
+      ok: true,
+      requestPath: '/metadata',
+      status: 200,
+      contentType: 'application/json',
+      providerBody: JSON.stringify({ baseUrl: config.fmp.baseUrl }),
+    });
 
     return ok({
       fmpConfigured: true,
@@ -77,26 +62,33 @@ export async function GET() {
   });
 }
 
-async function runTest(
+async function runRawTest(
   name: string,
-  fn: () => Promise<Record<string, unknown>>,
+  path: string,
+  options: Parameters<typeof fmpRawFetch>[1],
 ): Promise<FmpDebugTestResult> {
   try {
-    const details = await fn();
-    return { name, ok: true, details };
-  } catch (error) {
-    if (error instanceof AppError) {
-      return {
-        name,
-        ok: false,
-        error: { code: error.code, message: error.userMessage },
-      };
-    }
+    const { url, response } = await fmpRawFetch(path, options);
+    const contentType = response.headers.get('content-type');
+    const rawBody = await response.text();
+    const bodyPreview = rawBody.slice(0, 500);
 
     return {
       name,
+      ok: response.ok,
+      requestPath: redactFmpUrl(url),
+      status: response.status,
+      contentType,
+      providerBody: bodyPreview,
+    };
+  } catch (error) {
+    return {
+      name,
       ok: false,
-      error: { code: 'unknown', message: 'An unexpected error occurred.' },
+      error: {
+        code: 'unknown',
+        message: error instanceof Error ? error.message : 'Unexpected error',
+      },
     };
   }
 }

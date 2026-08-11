@@ -33,8 +33,9 @@ export async function getHistoricalPrices(
     return points.filter((p) => (!from || p.date >= from) && (!to || p.date <= to));
   }
 
-  const response = await fmpFetch<FmpHistoricalResponse>(`historical-price-full/${ticker}`, {
-    query: { from, to, serietype: 'line' },
+  const response = await fmpFetch<FmpHistoricalResponse>('historical-price-full', {
+    version: 'stable',
+    query: { symbol: ticker, from, to, serietype: 'line' },
     revalidate: 60 * 60 * 12,
   });
 

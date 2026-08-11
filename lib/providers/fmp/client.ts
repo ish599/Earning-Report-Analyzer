@@ -12,8 +12,8 @@ import { AppError } from '@/lib/types';
  */
 
 interface FetchOptions {
-  /** FMP splits its surface across /api/v3 and /api/v4. */
-  version?: 'v3' | 'v4';
+  /** FMP stable endpoints live at /stable/. Some older surfaces still use /api/v4. */
+  version?: 'stable' | 'v3' | 'v4';
   query?: Record<string, string | number | undefined>;
   /** Seconds to cache in Next's data cache. Reference data changes slowly. */
   revalidate?: number;
@@ -22,7 +22,30 @@ interface FetchOptions {
 const DEFAULT_REVALIDATE = 60 * 60; // 1 hour
 const REQUEST_TIMEOUT_MS = 20_000;
 
-export async function fmpFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
+function buildFmpUrl(path: string, version: FetchOptions['version'], query?: Record<string, string | number | undefined>) {
+  const base = config.fmp.baseUrl.replace(/\/$/, '');
+  const prefix = version === 'stable' || version === undefined ? 'stable' : `api/${version}`;
+  const url = new URL(`${base}/${prefix}/${path.replace(/^\//, '')}`);
+
+  for (const [key, value] of Object.entries(query ?? {})) {
+    if (value !== undefined && value !== null && value !== '') {
+      url.searchParams.set(key, String(value));
+    }
+  }
+
+  url.searchParams.set('apikey', config.fmp.apiKey!);
+  return url;
+}
+
+export function redactFmpUrl(url: URL): string {
+  const redacted = new URL(url.toString());
+  if (redacted.searchParams.has('apikey')) {
+    redacted.searchParams.set('apikey', '[REDACTED]');
+  }
+  return `${redacted.pathname}${redacted.search}`;
+}
+
+export async function fmpRawFetch(path: string, options: FetchOptions = {}) {
   if (!isFmpConfigured()) {
     throw new AppError(
       'provider_not_configured',
@@ -30,16 +53,7 @@ export async function fmpFetch<T>(path: string, options: FetchOptions = {}): Pro
     );
   }
 
-  const version = options.version ?? 'v3';
-  const url = new URL(`${config.fmp.baseUrl}/api/${version}/${path.replace(/^\//, '')}`);
-
-  for (const [key, value] of Object.entries(options.query ?? {})) {
-    if (value !== undefined && value !== null && value !== '') {
-      url.searchParams.set(key, String(value));
-    }
-  }
-  url.searchParams.set('apikey', config.fmp.apiKey!);
-
+  const url = buildFmpUrl(path, options.version, options.query);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -63,6 +77,12 @@ export async function fmpFetch<T>(path: string, options: FetchOptions = {}): Pro
     clearTimeout(timer);
   }
 
+  return { url, response };
+}
+
+export async function fmpFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
+  const { url, response } = await fmpRawFetch(path, options);
+
   if (response.status === 429) {
     throw new AppError(
       'provider_rate_limit',
@@ -71,18 +91,16 @@ export async function fmpFetch<T>(path: string, options: FetchOptions = {}): Pro
   }
 
   if (response.status === 401 || response.status === 403) {
-    // The credentials are invalid or the key is not permitted for this request.
-    // Never surface the API key or the request URL to the user.
     throw new AppError(
       'provider_authentication',
       'The market data provider rejected our credentials.',
-      { cause: new Error(`FMP ${response.status} on /${version}/${path}`) },
+      { cause: new Error(`FMP ${response.status} on ${redactFmpUrl(url)}`) },
     );
   }
 
   if (!response.ok) {
     throw new AppError('provider_error', 'The market data provider returned an error.', {
-      cause: new Error(`FMP ${response.status} on /${version}/${path}`),
+      cause: new Error(`FMP ${response.status} on ${redactFmpUrl(url)}`),
     });
   }
 
@@ -95,8 +113,6 @@ export async function fmpFetch<T>(path: string, options: FetchOptions = {}): Pro
     });
   }
 
-  // FMP signals plan/quota problems with a 200 and an { "Error Message": ... }
-  // body, so a status check alone is not enough.
   if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
     const message = (payload as Record<string, unknown>)['Error Message'];
     if (typeof message === 'string') {
