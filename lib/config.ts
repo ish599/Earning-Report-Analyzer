@@ -29,7 +29,7 @@ export const config = {
   },
   roic: {
     apiKey: read('ROIC_API_KEY'),
-    baseUrl: read('ROIC_BASE_URL') ?? null,
+    baseUrl: 'https://api.roic.ai',
   },
   supabase: {
     url: read('SUPABASE_URL') ?? read('NEXT_PUBLIC_SUPABASE_URL'),
@@ -41,7 +41,7 @@ export const isFmpConfigured = (): boolean => config.fmp.apiKey !== null;
 export const isXaiConfigured = (): boolean => config.xai.apiKey !== null;
 export const isSupabaseConfigured = (): boolean =>
   config.supabase.url !== null && config.supabase.secretKey !== null;
-export const isRoicConfigured = (): boolean => config.roic.apiKey !== null && config.roic.baseUrl !== null;
+export const isRoicConfigured = (): boolean => config.roic.apiKey !== null;
 
 /**
  * Bump when the prompt, schema, or scoring logic changes in a way that makes

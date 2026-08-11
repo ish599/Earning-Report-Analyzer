@@ -25,7 +25,6 @@ export async function roicRawFetch(path: string, query?: Record<string, string |
       signal: controller.signal,
       headers: {
         accept: 'application/json',
-        // Prefer Authorization header; many APIs accept Bearer tokens.
         Authorization: `Bearer ${config.roic.apiKey}`,
       },
     });
@@ -40,11 +39,42 @@ export async function roicRawFetch(path: string, query?: Record<string, string |
     clearTimeout(timer);
   }
 
+  // Map common HTTP error codes to AppError codes for transcript-specific handling.
+  if (response.status === 401) {
+    throw new AppError('provider_authentication', 'Transcript provider authentication failed.', {
+      cause: new Error(`ROIC ${response.status} ${url.pathname}`),
+      status: 401,
+    });
+  }
+  if (response.status === 402 || response.status === 403) {
+    throw new AppError('provider_error', 'Transcript access is not available under the current provider plan.', {
+      cause: new Error(`ROIC ${response.status} ${url.pathname}`),
+      status: response.status,
+    });
+  }
+  if (response.status === 404) {
+    throw new AppError('transcript_unavailable', 'No earnings transcript was found for this company.', {
+      cause: new Error(`ROIC ${response.status} ${url.pathname}`),
+      status: 404,
+    });
+  }
+  if (response.status === 429) {
+    throw new AppError('provider_rate_limit', 'Transcript provider rate limit reached. Please try again shortly.', {
+      cause: new Error(`ROIC ${response.status} ${url.pathname}`),
+      status: 429,
+    });
+  }
+  if (response.status >= 500) {
+    throw new AppError('provider_error', 'The transcript provider is temporarily unavailable.', {
+      cause: new Error(`ROIC ${response.status} ${url.pathname}`),
+      status: response.status,
+    });
+  }
+
   return { url, response };
 }
 
 export function redactRoicUrl(url: URL): string {
   const r = new URL(url.toString());
-  if (r.searchParams.has('api_key')) r.searchParams.set('api_key', '[REDACTED]');
   return `${r.pathname}${r.search}`;
 }

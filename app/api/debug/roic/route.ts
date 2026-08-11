@@ -12,25 +12,26 @@ export async function GET(request: Request) {
     if (!isRoicConfigured()) return ok(out);
 
     try {
-      const available = await roic.getAvailableCalls(symbol).catch((e) => {
-        return { error: e instanceof Error ? e.message : String(e) } as any;
-      });
+      // First, test the latest transcript endpoint (v2). This is the MVP
+      // critical check; a failure here should not be masked by optional
+      // listing failures.
+      const latestResult = await roic.getLatestTranscript(symbol)
+        .then((t) => ({ ok: true, status: 200, ticker: t.ticker, year: t.fiscalYear, quarter: t.fiscalQuarter, characters: t.text.length }))
+        .catch((e) => {
+          if (e instanceof Error && (e as any).status) {
+            return { ok: false, status: (e as any).status, providerMessage: e instanceof Error ? e.message : String(e) };
+          }
+          return { ok: false, status: 500, providerMessage: e instanceof Error ? e.message : String(e) };
+        });
 
-      out.available = Array.isArray(available) ? { success: true, count: available.length } : { success: false, error: available?.error ?? 'unknown' };
+      out.latest = latestResult;
 
-      if (Array.isArray(available) && available.length > 0) {
-        const latest = available[0];
-        out.latest = { year: latest.fiscalYear, quarter: latest.fiscalQuarter, callDate: latest.callDate };
+      // Then, optionally test the available calls (v3) listing endpoint. If
+      // it fails, report the failure but don't override the latest result.
+      const available = await roic.getAvailableCalls(symbol).then((r) => ({ ok: true, status: 200, count: r.length }))
+        .catch((e) => ({ ok: false, status: e instanceof Error && (e as any).status ? (e as any).status : 500, providerMessage: e instanceof Error ? e.message : String(e) }));
 
-        const transcript = await roic.getTranscript(symbol, latest.fiscalYear, latest.fiscalQuarter).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
-        if (transcript && !('error' in transcript)) {
-          out.latest.success = true;
-          out.latest.characters = transcript.text.length;
-        } else {
-          out.latest.success = false;
-          out.latest.error = transcript?.error ?? 'fetch_failed';
-        }
-      }
+      out.availableCalls = available;
 
       return ok(out);
     } catch (e) {
