@@ -103,11 +103,11 @@ export function normalizeRoicLatestPayload(payload: unknown): Transcript {
   }
 
   const data = payload as Record<string, unknown>;
-  const symbol = String(data.symbol ?? data.ticker ?? '').trim();
-  const year = Number(data.year ?? data.fiscalYear);
-  const quarter = Number(data.quarter ?? data.fiscalQuarter);
-  const dateValue = String(data.date ?? data.callDate ?? data.eventDate ?? '').trim();
-  const content = String(data.content ?? data.transcript ?? data.text ?? '').trim();
+  const symbol = String(data.symbol ?? '').trim();
+  const year = Number(data.year);
+  const quarter = Number(data.quarter);
+  const dateValue = String(data.date ?? '').trim();
+  const content = String(data.content ?? '').trim();
 
   if (
     symbol.length === 0 ||
@@ -134,8 +134,27 @@ export function normalizeRoicLatestPayload(payload: unknown): Transcript {
 export async function getLatestTranscript(rawTicker: string): Promise<Transcript> {
   const ticker = rawTicker.toUpperCase();
   try {
-    const path = `v2/company/earnings-calls/latest/${ticker}`;
-    const { response } = await roicRawFetch(path);
+    const url = new URL(
+      `/v2/company/earnings-calls/latest/${ticker}`,
+      'https://api.roic.ai',
+    );
+    url.searchParams.set('apikey', process.env.ROIC_API_KEY!.trim());
+
+    console.log('ROIC production request', {
+      ticker,
+      authMode: 'query',
+      endpoint: 'latest',
+    });
+
+    const response = await fetch(url.toString(), {
+      cache: 'no-store',
+      headers: {
+        accept: 'application/json',
+      },
+    });
+
+    console.log('ROIC production response', { status: response.status });
+
     const payload = await response.json().catch(() => null);
     return normalizeRoicLatestPayload(payload);
   } catch (e) {

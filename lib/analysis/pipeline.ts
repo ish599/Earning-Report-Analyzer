@@ -1,6 +1,7 @@
 import 'server-only';
 import { getCompany } from '@/lib/providers/company';
-import { getTranscript, getTranscriptDates, getLatestTranscriptRef } from '@/lib/providers/transcripts';
+import { getTranscript, getTranscriptDates } from '@/lib/providers/transcripts';
+import { getLatestTranscript } from '@/lib/providers/roicTranscripts';
 import { getQuarterlyFinancials, getReleaseTiming } from '@/lib/providers/financials';
 import { getHistoricalPrices, priceWindowFor } from '@/lib/providers/marketData';
 import { segmentTranscript } from '@/lib/transcript/segment';
@@ -62,7 +63,11 @@ export async function prepareCompany(
   const companyId = await store.upsertCompany(company);
 
   const available = isRoicConfigured() && !options.only
-    ? [await getLatestTranscriptRef(ticker)]
+    ? [
+        {
+          ...await getLatestTranscript(ticker),
+        },
+      ]
     : await getTranscriptDates(ticker);
   const selected = selectTargets(available, options);
 
