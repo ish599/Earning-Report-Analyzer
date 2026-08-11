@@ -405,6 +405,7 @@ export type AppErrorCode =
   | 'transcript_unavailable'
   | 'provider_rate_limit'
   | 'provider_error'
+  | 'provider_authentication'
   | 'provider_not_configured'
   | 'llm_timeout'
   | 'llm_invalid_response'

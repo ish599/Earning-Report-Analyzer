@@ -28,9 +28,18 @@ const GUIDANCE: Partial<Record<AppErrorCode, { title: string; detail: string }>>
     title: 'Data provider rate limit reached',
     detail: 'Too many requests, or this data is outside the current plan. Try again shortly.',
   },
+  provider_authentication: {
+    title: 'Market data provider rejected credentials',
+    detail:
+      'The FMP API key is present, but the provider rejected it. Verify FMP_API_KEY in your deployment settings.',
+  },
   provider_not_configured: {
     title: 'Market data is not configured',
     detail: 'This deployment has no market data credentials, so live company coverage is unavailable.',
+  },
+  provider_error: {
+    title: 'Unable to load market data',
+    detail: 'The market data provider returned an error. Try again later.',
   },
   llm_not_configured: {
     title: 'Analysis is not configured',

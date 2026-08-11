@@ -71,10 +71,12 @@ export async function fmpFetch<T>(path: string, options: FetchOptions = {}): Pro
   }
 
   if (response.status === 401 || response.status === 403) {
-    // Never surface the key or the URL, both of which contain the secret.
+    // The credentials are invalid or the key is not permitted for this request.
+    // Never surface the API key or the request URL to the user.
     throw new AppError(
-      'provider_not_configured',
+      'provider_authentication',
       'The market data provider rejected our credentials.',
+      { cause: new Error(`FMP ${response.status} on /${version}/${path}`) },
     );
   }
 
