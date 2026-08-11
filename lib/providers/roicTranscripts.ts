@@ -14,7 +14,8 @@ import type { Transcript, TranscriptRef } from '@/lib/types';
  * - Available calls (v3): GET /v3.0.0/earnings-calls?identifier={EXCHANGE:TICKER}&order=desc
  *
  * Historical retrieval via v3 is intentionally not implemented here; the
- * MVP relies on the latest endpoint for core functionality.
+ * MVP relies on the latest endpoint for core functionality, but ROIC's v3
+ * call listing is used to select multiple recent quarters when available.
  */
 
 export async function getAvailableCalls(rawTicker: string): Promise<TranscriptRef[]> {
@@ -27,7 +28,6 @@ export async function getAvailableCalls(rawTicker: string): Promise<TranscriptRe
     try {
       const company = await getCompany(ticker);
       if (company.exchange) {
-        // Normalize exchange to simple code (assume already like 'NASDAQ' or 'NYSE')
         identifier = `${company.exchange}:${ticker}`;
       }
     } catch {
@@ -37,7 +37,7 @@ export async function getAvailableCalls(rawTicker: string): Promise<TranscriptRe
     if (identifier) {
       try {
         const path = 'v3.0.0/earnings-calls';
-        const { response } = await roicRawFetch(path, { identifier, order: 'desc' });
+        const { response } = await roicRawFetch(path, { identifier, order: 'desc', limit: 12 });
         const payload = await response.json().catch(() => null);
         const items = Array.isArray(payload?.data)
           ? payload.data
@@ -55,13 +55,14 @@ export async function getAvailableCalls(rawTicker: string): Promise<TranscriptRe
               const year = Number(r.fiscal_year ?? r.fiscalYear ?? r.year);
               const quarter = Number(r.fiscal_quarter ?? r.fiscalQuarter ?? r.quarter);
               const date = toDateString(r.date ?? r.callDate ?? r.eventDate ?? r.reportDate);
+              const providerId = String(r.id ?? r.providerId ?? '').trim();
               if (!Number.isFinite(year) || !Number.isFinite(quarter)) return null;
               return {
                 ticker: extractedTicker,
                 fiscalYear: year,
                 fiscalQuarter: quarter,
                 callDate: date,
-                providerId: String(r.id ?? r.providerId ?? ''),
+                providerId: providerId || undefined,
               } as TranscriptRef;
             })
             .filter((x): x is TranscriptRef => x !== null)
@@ -95,6 +96,19 @@ export async function getAvailableCalls(rawTicker: string): Promise<TranscriptRe
   }
 }
 
+export async function getTranscriptByProviderId(providerId: string): Promise<Transcript> {
+  try {
+    const path = `v3.0.0/earnings-calls/${encodeURIComponent(providerId)}`;
+    const { response } = await roicRawFetch(path);
+    const payload = await response.json().catch(() => null);
+    const item = payload?.data ?? payload;
+    return normalizeRoicLatestPayload(item);
+  } catch (e) {
+    if (e instanceof AppError) throw e;
+    throw new AppError('provider_error', 'Transcript provider failure.', { cause: e });
+  }
+}
+
 const MIN_TRANSCRIPT_CHARS = 500;
 
 export function normalizeRoicLatestPayload(payload: unknown): Transcript {
@@ -107,7 +121,7 @@ export function normalizeRoicLatestPayload(payload: unknown): Transcript {
   const year = Number(data.year);
   const quarter = Number(data.quarter);
   const dateValue = String(data.date ?? '').trim();
-  const content = String(data.content ?? '').trim();
+  const content = String(data.content ?? data.transcript ?? '').trim();
 
   if (
     symbol.length === 0 ||
@@ -163,9 +177,26 @@ export async function getLatestTranscript(rawTicker: string): Promise<Transcript
   }
 }
 
-export async function getTranscript(rawTicker: string, year: number, quarter: number): Promise<Transcript> {
-  // Historical retrieval is not implemented — rely on latest endpoint for MVP.
+export async function getTranscript(
+  rawTicker: string,
+  year: number,
+  quarter: number,
+  providerId?: string,
+): Promise<Transcript> {
+  if (providerId) {
+    const transcript = await getTranscriptByProviderId(providerId);
+    if (transcript.fiscalYear === year && transcript.fiscalQuarter === quarter) {
+      return transcript;
+    }
+  }
+
+  // Historical retrieval is not implemented for old data, so fall back to the
+  // latest endpoint only when the caller requests the current quarter.
   const latest = await getLatestTranscript(rawTicker);
   if (latest.fiscalYear === year && latest.fiscalQuarter === quarter) return latest;
-  throw new AppError('transcript_unavailable', `Transcript for ${rawTicker} Q${quarter} FY${year} is not available.`);
+
+  throw new AppError(
+    'transcript_unavailable',
+    `Transcript for ${rawTicker} Q${quarter} FY${year} is not available.`,
+  );
 }

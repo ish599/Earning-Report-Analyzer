@@ -62,13 +62,7 @@ export async function prepareCompany(
   const ticker = company.ticker;
   const companyId = await store.upsertCompany(company);
 
-  const available = isRoicConfigured() && !options.only
-    ? [
-        {
-          ...await getLatestTranscript(ticker),
-        },
-      ]
-    : await getTranscriptDates(ticker);
+  const available = await getTranscriptDates(ticker);
   const selected = selectTargets(available, options);
 
   if (selected.length === 0) {
@@ -83,7 +77,12 @@ export async function prepareCompany(
 
   for (const ref of selected) {
     try {
-      const transcript = await getTranscript(ticker, ref.fiscalYear, ref.fiscalQuarter);
+      const transcript = await getTranscript(
+        ticker,
+        ref.fiscalYear,
+        ref.fiscalQuarter,
+        ref.providerId,
+      );
       const call = await store.upsertCall({
         companyId,
         ticker,

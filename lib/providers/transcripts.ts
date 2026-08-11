@@ -108,11 +108,12 @@ export async function getTranscript(
   rawTicker: string,
   year: number,
   quarter: number,
+  providerId?: string,
 ): Promise<Transcript> {
   const ticker = normalizeTicker(rawTicker);
 
   if (isRoicConfigured()) {
-    return roic.getTranscript(ticker, year, quarter);
+    return roic.getTranscript(ticker, year, quarter, providerId);
   }
 
   if (!isFmpConfigured()) {

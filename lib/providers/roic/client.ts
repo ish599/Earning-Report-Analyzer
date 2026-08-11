@@ -16,6 +16,9 @@ export async function roicRawFetch(path: string, query?: Record<string, string |
     if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
   }
 
+  // ROIC accepts API key auth via query parameters in production.
+  url.searchParams.set('apikey', config.roic.apiKey!);
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -25,7 +28,6 @@ export async function roicRawFetch(path: string, query?: Record<string, string |
       signal: controller.signal,
       headers: {
         accept: 'application/json',
-        Authorization: `Bearer ${config.roic.apiKey}`,
       },
     });
   } catch (cause) {
