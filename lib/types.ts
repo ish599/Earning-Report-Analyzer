@@ -125,6 +125,7 @@ export interface FiscalPeriod {
 export interface TranscriptRef extends FiscalPeriod {
   ticker: string;
   callDate: string | null;
+  providerId?: string;
 }
 
 export interface Transcript extends TranscriptRef {

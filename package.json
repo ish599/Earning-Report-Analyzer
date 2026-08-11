@@ -8,6 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
+    "check:roic-normalization": "tsx scripts/validate-roic-normalization.ts",
     "check:segmentation": "tsx scripts/check-segmentation.ts",
     "build:fixtures": "python scripts/build-fixtures.py"
   },

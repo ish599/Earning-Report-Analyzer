@@ -4,7 +4,6 @@ import { getCompany } from '@/lib/providers/company';
 import { isRoicConfigured, config } from '@/lib/config';
 
 const ROIC_HOST = 'api.roic.ai';
-const ROIC_BASE_PATH = '/';
 const DEBUG_BODY_PREVIEW_LIMIT = 500;
 
 interface HttpResult {
@@ -32,13 +31,13 @@ function bodyPreview(text: string): string {
     : text.slice(0, DEBUG_BODY_PREVIEW_LIMIT);
 }
 
-async function fetchRoicRaw(url: string, headers: Record<string, string>): Promise<HttpResult> {
+async function fetchRoicRaw(url: string, headers: Record<string, string>, safePath?: string): Promise<HttpResult> {
   const parsed = new URL(url);
   const result: HttpResult = {
     request: {
       method: 'GET',
       host: parsed.host,
-      path: parsed.pathname + parsed.search,
+      path: safePath ?? parsed.pathname + parsed.search,
     },
     networkError: null,
   };
@@ -90,8 +89,39 @@ export async function GET(request: Request) {
     out.latest = latestBearer;
 
     const latestQueryUrl = `https://${ROIC_HOST}${getLatestPath(symbol)}?apikey=${encodeURIComponent(config.roic.apiKey ?? '')}`;
-    const latestQuery = await fetchRoicRaw(latestQueryUrl, { Accept: 'application/json' });
+    const latestQuery = await fetchRoicRaw(latestQueryUrl, { Accept: 'application/json' }, `${getLatestPath(symbol)}?apikey=[REDACTED]`);
     out.latestQueryAuth = latestQuery;
+
+    if (latestBearer.response && !latestBearer.networkError) {
+      try {
+        const latestPayload = JSON.parse(latestBearer.response.bodyPreview);
+        out.latest.rawShape = {
+          hasSymbol: typeof latestPayload?.symbol === 'string',
+          hasYear: Number.isFinite(Number(latestPayload?.year)),
+          hasQuarter: Number.isFinite(Number(latestPayload?.quarter)),
+          hasDate: typeof latestPayload?.date === 'string',
+          hasContent: typeof latestPayload?.content === 'string',
+        };
+        if (
+          out.latest.rawShape.hasSymbol &&
+          out.latest.rawShape.hasYear &&
+          out.latest.rawShape.hasQuarter &&
+          out.latest.rawShape.hasDate &&
+          out.latest.rawShape.hasContent
+        ) {
+          out.latest.normalized = {
+            ticker: String(latestPayload.symbol).toUpperCase(),
+            fiscalYear: Number(latestPayload.year),
+            fiscalQuarter: Number(latestPayload.quarter),
+            callDate: latestPayload.date,
+            characters: String(latestPayload.content).length,
+            source: 'roic',
+          };
+        }
+      } catch {
+        // Ignore parse failures; raw body preview is already available.
+      }
+    }
 
     let availableCallsPath: string | null = null;
     try {
