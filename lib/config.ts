@@ -27,14 +27,14 @@ export const config = {
   },
   supabase: {
     url: read('SUPABASE_URL') ?? read('NEXT_PUBLIC_SUPABASE_URL'),
-    serviceRoleKey: read('SUPABASE_SERVICE_ROLE_KEY'),
+    secretKey: read('SUPABASE_SECRET_KEY'),
   },
 } as const;
 
 export const isFmpConfigured = (): boolean => config.fmp.apiKey !== null;
 export const isXaiConfigured = (): boolean => config.xai.apiKey !== null;
 export const isSupabaseConfigured = (): boolean =>
-  config.supabase.url !== null && config.supabase.serviceRoleKey !== null;
+  config.supabase.url !== null && config.supabase.secretKey !== null;
 
 /**
  * Bump when the prompt, schema, or scoring logic changes in a way that makes

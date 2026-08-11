@@ -20,7 +20,7 @@ export function getServiceClient(): SupabaseClient | null {
     return cached;
   }
 
-  cached = createClient(config.supabase.url!, config.supabase.serviceRoleKey!, {
+  cached = createClient(config.supabase.url!, config.supabase.secretKey!, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { headers: { 'x-application-name': 'earnings-intelligence' } },
   });

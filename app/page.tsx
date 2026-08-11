@@ -79,7 +79,7 @@ export default function HomePage() {
               <li>
                 No database configured — results are cached in memory and lost on restart. Set{' '}
                 <code className="font-mono text-xs">SUPABASE_URL</code> and{' '}
-                <code className="font-mono text-xs">SUPABASE_SERVICE_ROLE_KEY</code> to persist them.
+                <code className="font-mono text-xs">SUPABASE_SECRET_KEY</code> to persist them.
               </li>
             )}
           </ul>

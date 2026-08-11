@@ -24,7 +24,7 @@ import {
  * Persistence for companies, transcripts, and analyses.
  *
  * Two backends share one interface:
- *   * Supabase when SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set.
+ *   * Supabase when SUPABASE_URL and SUPABASE_SECRET_KEY are set.
  *   * An in-process Map otherwise, so the product runs end to end with no
  *     database. The memory backend is NOT durable — it is cleared on every
  *     cold start, so an unconfigured deployment re-analyzes transcripts more
