@@ -1,14 +1,13 @@
 import 'server-only';
 import { getCompany } from '@/lib/providers/company';
 import { getTranscript, getTranscriptDates } from '@/lib/providers/transcripts';
-import { getLatestTranscript } from '@/lib/providers/roicTranscripts';
 import { getQuarterlyFinancials, getReleaseTiming } from '@/lib/providers/financials';
 import { getHistoricalPrices, priceWindowFor } from '@/lib/providers/marketData';
 import { segmentTranscript } from '@/lib/transcript/segment';
 import { analyzeTranscript, toPriorContext } from '@/lib/ai/analyzeTranscript';
 import type { PriorQuarterContext } from '@/lib/ai/prompts';
 import { computePriceReaction } from './priceReaction';
-import { isRoicConfigured, isXaiConfigured, INITIAL_ANALYSIS_QUARTERS, QOQ_LOOKBACK_QUARTERS } from '@/lib/config';
+import { isGeminiConfigured, INITIAL_ANALYSIS_QUARTERS, QOQ_LOOKBACK_QUARTERS } from '@/lib/config';
 import * as store from '@/lib/db/store';
 import {
   AppError,
@@ -77,22 +76,35 @@ export async function prepareCompany(
 
   for (const ref of selected) {
     try {
-      const transcript = await getTranscript(
-        ticker,
-        ref.fiscalYear,
-        ref.fiscalQuarter,
-        ref.providerId,
-      );
-      const call = await store.upsertCall({
-        companyId,
-        ticker,
-        fiscalYear: transcript.fiscalYear,
-        fiscalQuarter: transcript.fiscalQuarter,
-        callDate: transcript.callDate ?? ref.callDate,
-        transcriptText: transcript.text,
-        transcriptSource: transcript.source,
+      // Prefer the stored transcript when one already exists. This avoids
+      // refetching ROIC for quarters we have already persisted.
+      const stored = await store.getCallByPeriod(companyId, ref.fiscalYear, ref.fiscalQuarter);
+
+      let call: Awaited<ReturnType<typeof store.upsertCall>>;
+      if (stored?.transcriptText) {
+        call = stored;
+      } else {
+        const transcript = await getTranscript(
+          ticker,
+          ref.fiscalYear,
+          ref.fiscalQuarter,
+          ref.providerId,
+        );
+        call = await store.upsertCall({
+          companyId,
+          ticker,
+          fiscalYear: transcript.fiscalYear,
+          fiscalQuarter: transcript.fiscalQuarter,
+          callDate: transcript.callDate ?? ref.callDate,
+          transcriptText: transcript.text,
+          transcriptSource: transcript.source,
+        });
+      }
+
+      targets.push({
+        ref: { ...ref, callDate: call.callDate ?? ref.callDate },
+        callId: call.id,
       });
-      targets.push({ ref: { ...ref, callDate: transcript.callDate ?? ref.callDate }, callId: call.id });
     } catch (error) {
       warnings.push({ period: quarterLabel(ref), message: toMessage(error) });
     }
@@ -138,10 +150,10 @@ export async function analyzeNextPending(
   const { company, companyId, targets } = prepared;
   const total = targets.length;
 
-  if (!isXaiConfigured()) {
+  if (!isGeminiConfigured()) {
     throw new AppError(
       'llm_not_configured',
-      'Transcript analysis is not configured. Set XAI_API_KEY to enable it.',
+      'Transcript analysis is not configured. Set GEMINI_API_KEY to enable it.',
     );
   }
 

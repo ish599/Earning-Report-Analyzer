@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { SearchBar } from '@/components/SearchBar';
-import { isFmpConfigured, isXaiConfigured, isSupabaseConfigured } from '@/lib/config';
+import { isFmpConfigured, isGeminiConfigured, isSupabaseConfigured } from '@/lib/config';
 import { fixtureTickers } from '@/lib/providers/fixtures';
 
 /**
@@ -12,7 +12,7 @@ import { fixtureTickers } from '@/lib/providers/fixtures';
  */
 export default function HomePage() {
   const live = isFmpConfigured();
-  const analysisReady = isXaiConfigured();
+  const analysisReady = isGeminiConfigured();
   const persistent = isSupabaseConfigured();
   const examples = live ? ['AAPL', 'NET', 'DDOG', 'INGN', 'AMN'] : fixtureTickers();
 
@@ -72,7 +72,7 @@ export default function HomePage() {
             {!analysisReady && (
               <li>
                 Transcript analysis is disabled. Set{' '}
-                <code className="font-mono text-xs">XAI_API_KEY</code> to enable it.
+                <code className="font-mono text-xs">GEMINI_API_KEY</code> to enable it.
               </li>
             )}
             {!persistent && (

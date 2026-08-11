@@ -1,6 +1,6 @@
 import 'server-only';
-import { completeJson, isConfigured } from './grok';
-import { analysisResponseSchema, toProviderJsonSchema, type AnalysisResponse } from './schema';
+import { completeJson, isConfigured } from './gemini';
+import { analysisResponseSchema, type AnalysisResponse } from './schema';
 import { SYSTEM_PROMPT, buildUserPrompt, type PriorQuarterContext } from './prompts';
 import { normalizeAnalysis } from './normalize';
 import { ANALYSIS_VERSION } from '@/lib/config';
@@ -36,18 +36,15 @@ export async function analyzeTranscript(
   if (!isConfigured()) {
     throw new AppError(
       'llm_not_configured',
-      'Transcript analysis is not configured. Set XAI_API_KEY to enable it.',
+      'Transcript analysis is not configured. Set GEMINI_API_KEY to enable it.',
     );
   }
 
   const user = buildUserPrompt(input);
-  const jsonSchema = toProviderJsonSchema();
 
   const { data, modelUsed } = await completeWithRetry({
     system: SYSTEM_PROMPT,
     user,
-    schemaName: 'earnings_call_analysis',
-    jsonSchema,
   });
 
   return normalizeAnalysis(data, {
@@ -70,8 +67,6 @@ export async function analyzeTranscript(
 async function completeWithRetry(request: {
   system: string;
   user: string;
-  schemaName: string;
-  jsonSchema: Record<string, unknown>;
 }): Promise<{ data: AnalysisResponse; modelUsed: string }> {
   const first = await completeJson(request);
   const parsed = analysisResponseSchema.safeParse(first.data);

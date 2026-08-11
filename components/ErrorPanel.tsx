@@ -43,7 +43,7 @@ const GUIDANCE: Partial<Record<AppErrorCode, { title: string; detail: string }>>
   },
   llm_not_configured: {
     title: 'Analysis is not configured',
-    detail: 'Transcript analysis requires XAI_API_KEY to be set on the server.',
+    detail: 'Transcript analysis requires GEMINI_API_KEY to be set on the server.',
   },
   llm_timeout: {
     title: 'Analysis timed out',

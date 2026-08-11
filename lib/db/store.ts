@@ -244,6 +244,51 @@ export async function listCalls(companyId: string, ticker: string): Promise<Stor
   }));
 }
 
+export async function getCallByPeriod(
+  companyId: string,
+  fiscalYear: number,
+  fiscalQuarter: number,
+): Promise<StoredCall | null> {
+  const db = getServiceClient();
+
+  if (!db) {
+    return (
+      [...memory.calls.values()].find(
+        (c) =>
+          c.companyId === companyId &&
+          c.fiscalYear === fiscalYear &&
+          c.fiscalQuarter === fiscalQuarter,
+      ) ?? null
+    );
+  }
+
+  const { data, error } = await db
+    .from('earnings_calls')
+    .select(
+      'id, company_id, fiscal_year, fiscal_quarter, call_date, transcript_text, transcript_source',
+    )
+    .eq('company_id', companyId)
+    .eq('fiscal_year', fiscalYear)
+    .eq('fiscal_quarter', fiscalQuarter)
+    .maybeSingle();
+
+  if (error) {
+    throw new AppError('database_error', 'Could not load the earnings call.', { cause: error });
+  }
+  if (!data) return null;
+
+  return {
+    id: data.id as string,
+    companyId: data.company_id as string,
+    ticker: '',
+    fiscalYear: data.fiscal_year as number,
+    fiscalQuarter: data.fiscal_quarter as number,
+    callDate: data.call_date as string | null,
+    transcriptText: data.transcript_text as string | null,
+    transcriptSource: data.transcript_source as string,
+  };
+}
+
 export async function getCallById(callId: string): Promise<StoredCall | null> {
   const db = getServiceClient();
 

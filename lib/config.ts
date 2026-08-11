@@ -27,6 +27,13 @@ export const config = {
     /** Serverless functions cap out well before this; keep headroom. */
     timeoutMs: Number(process.env.XAI_TIMEOUT_MS?.trim() ?? 90_000),
   },
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY?.trim() ?? null,
+    baseUrl: process.env.GEMINI_BASE_URL?.trim() ?? 'https://generativelanguage.googleapis.com/v1beta/models',
+    model: process.env.GEMINI_MODEL?.trim() ?? 'gemini-2.5-flash',
+    /** Serverless functions cap out well before this; keep headroom. */
+    timeoutMs: Number(process.env.GEMINI_TIMEOUT_MS?.trim() ?? 90_000),
+  },
   roic: {
     apiKey: read('ROIC_API_KEY'),
     baseUrl: 'https://api.roic.ai',
@@ -39,6 +46,7 @@ export const config = {
 
 export const isFmpConfigured = (): boolean => config.fmp.apiKey !== null;
 export const isXaiConfigured = (): boolean => config.xai.apiKey !== null;
+export const isGeminiConfigured = (): boolean => config.gemini.apiKey !== null;
 export const isSupabaseConfigured = (): boolean =>
   config.supabase.url !== null && config.supabase.secretKey !== null;
 export const isRoicConfigured = (): boolean => config.roic.apiKey !== null;
