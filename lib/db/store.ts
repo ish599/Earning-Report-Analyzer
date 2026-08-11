@@ -104,6 +104,13 @@ export async function upsertCompany(company: Company): Promise<string> {
     .single();
 
   if (error || !data) {
+    const supabaseError = error as { code?: string; message?: string; details?: unknown; hint?: string };
+    console.error('Supabase company upsert failed', {
+      code: supabaseError?.code,
+      message: supabaseError?.message,
+      details: supabaseError?.details,
+      hint: supabaseError?.hint,
+    });
     throw new AppError('database_error', 'Could not save company information.', { cause: error });
   }
   return data.id as string;
