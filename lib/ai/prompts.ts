@@ -178,7 +178,52 @@ export function buildUserPrompt(input: BuildPromptInput): string {
 
   parts.push(
     '\n=== TASK ===',
-    `Analyze this call and return JSON matching the required schema. Every quote must appear verbatim in the transcript above. Ground the changes_vs_prior_quarter entries in specific language differences, not general impressions.`,
+    `Analyze this call and return a JSON object (no markdown fences) with EXACTLY these snake_case fields and types:
+
+{
+  "overall_sentiment": number 0-100,
+  "management_sentiment": number 0-100,
+  "qa_sentiment": number 0-100,
+  "management_confidence": number 0-100,
+  "guidance_tone": number 0-100,
+  "business_momentum": number 0-100,
+  "classification": "very_bearish" | "bearish" | "neutral" | "bullish" | "very_bullish",
+  "confidence_score": number 0-100,
+  "summary": string (1-2000 chars),
+  "topics": [
+    {
+      "topic": one of ${TOPIC_KEYS.join('|')},
+      "sentiment_score": number 0-100,
+      "mention_count": integer >= 0,
+      "direction": "improving" | "stable" | "deteriorating" | "new",
+      "summary": string (1-600 chars)
+    }
+  ] (max 14, may be empty),
+  "key_quotes": [
+    {
+      "speaker": string,
+      "speaker_role": "ceo" | "cfo" | "management" | "analyst" | "operator" | "unknown",
+      "quote": string (12-1200 chars, VERBATIM from transcript),
+      "topic": one of ${TOPIC_KEYS.join('|')} or null,
+      "sentiment": "positive" | "neutral" | "negative" | "mixed",
+      "importance_score": number 0-100,
+      "why_it_matters": string (1-500 chars)
+    }
+  ] (max 12, may be empty),
+  "risks": string[] (max 10, may be empty),
+  "positives": string[] (max 10, may be empty),
+  "changes_vs_prior_quarter": [
+    {
+      "topic": one of ${TOPIC_KEYS.join('|')} or null,
+      "observation": string (1-400 chars),
+      "direction": "improving" | "stable" | "deteriorating" | "new",
+      "evidence_current": string or null,
+      "evidence_prior": string or null
+    }
+  ] (max 12, may be empty)
+}
+
+Every quote must appear verbatim in the transcript above. Ground the changes_vs_prior_quarter entries in specific language differences, not general impressions. Missing or empty arrays are acceptable; omitted keys are not.`,
   );
 
   return parts.filter(Boolean).join('\n');
